@@ -34,20 +34,27 @@ async def main():
         server_host, server_port,
         net_ttl, net_tpf, net_ttp)
 
+    current_mode = "Standard Mode"
     # 根据电磁场值调整通信模式
     async def adjust_communication_mode(emf_value):
+        nonlocal current_mode  # 使用 nonlocal 声明以允许修改外部变量
         logging.info(f"Adjusting communication mode for EMF value: {emf_value}")  # 调试信息
-        if emf_value > 50.0:
-            logging.info("High EMF detected, switching to high interference mode.")
-            mode = "High Interference Mode"
-        else:
-            logging.info("Normal EMF levels, maintaining standard mode.")
-            mode = "Standard Mode"
 
-        encrypted_mode = tcdicn.encrypt(mode, key)
+        # 根据 EMF 值和当前模式决定是否需要调整
+        if emf_value > 50.0 and current_mode != "High Interference Mode":
+            logging.info("High EMF detected, switching to high interference mode.")
+            current_mode = "High Interference Mode"
+        elif emf_value <= 50.0 and current_mode != "Standard Mode":
+            logging.info("EMF levels normal, switching back to standard mode.")
+            current_mode = "Standard Mode"
+        else:
+            logging.info(f"Maintaining current mode: {current_mode}")
+            return  # 如果不需要调整模式，则直接返回
+
+        encrypted_mode = tcdicn.encrypt(current_mode, key)
         try:
             await client.set("communication_status", encrypted_mode)
-            logging.info(f"Published communication mode: {mode}")  # 新增日志
+            logging.info(f"Published communication mode: {current_mode}")  # 新增日志
         except Exception as e:
             logging.error(f"Error in adjust_communication_mode: {e}")
 

@@ -22,8 +22,10 @@ async def main():
     get_ttl = int(os.environ.get("TCDICN_GET_TTL", 180))
     get_tpf = int(os.environ.get("TCDICN_GET_TPF", 3))
     get_ttp = float(os.environ.get("TCDICN_GET_TTP", 0))
+
     if id is None:
         sys.exit("Please give your client a unique ID by setting TCDICN_ID")
+
     # Logging configuration
     logging.basicConfig(
         format="%(asctime)s.%(msecs)04d [%(levelname)s] %(message)s",
@@ -42,37 +44,26 @@ async def main():
     # Define a function to adjust lighting
     def adjust_lighting(temperature, brightness):
         if temperature < 10:
-            return min(brightness + 10, 100)
+            logging.info("Low temperature detected, increasing lighting brightness.")
+            return min(brightness + 10, 100)  # Increase brightness
         else:
-            return max(brightness - 5, 0)
+            logging.info("Normal temperature, maintaining current lighting.")
+            return max(brightness - 5, 0)  # Decrease brightness
 
     # Subscribe and process temperature data
     async def run_actuator():
-
         nonlocal current_brightness
-        tasks = set()
-        def subscribe(tag):
-            getter = client.get(tag, get_ttl, get_tpf, get_ttp)
-            task = asyncio.create_task(getter, name=tag)
-            tasks.add(task)
-
-        logging.info(f"Subscribing to {id}_water_temperature...")
-        subscribe(id + "_water_temperature")
 
         while True:
-            done, tasks = await asyncio.wait(
-                tasks, return_when=asyncio.FIRST_COMPLETED)
-            for task in done:
-                tag = task.get_name()
-                temperature = float(tcdicn.decrypt(task.result(), key))
-                logging.info(f"Received {tag} = {temperature}")
-                current_brightness = adjust_lighting(temperature, current_brightness)
-                encrypted_brightness = tcdicn.encrypt(str(current_brightness), key)
-                await client.set(f"{id}_lighting_brightness", encrypted_brightness)
-                subscribe(tag)
+            temperature_reading = await client.get(id + "_water_temperature", get_ttl, get_tpf, get_ttp)
+            temperature = float(tcdicn.decrypt(temperature_reading, key))
+            logging.info(f"Received water_temperature = {temperature}")
+            current_brightness = adjust_lighting(temperature, current_brightness)
+            encrypted_brightness = tcdicn.encrypt(str(current_brightness), key)
+            await client.set(f"{id}_lighting_brightness", encrypted_brightness)
 
     # Run the actuator logic as a coroutine
-    actuator_task = run_actuator()
+    actuator_task = asyncio.create_task(run_actuator())
 
     # Execute both tasks
     both_tasks = asyncio.gather(client.task, actuator_task)
