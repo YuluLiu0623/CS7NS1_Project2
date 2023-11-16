@@ -5,7 +5,7 @@ import tcdicn
 
 async def main():
     # 获取环境变量或默认值
-    port = int(os.getenv("TCDICN_PORT", 33350))  # 更新监听端口为 :33350
+    port = int(os.getenv("TCDICN_PORT", 33335))  # 更新监听端口为 :33350
     dport = int(os.getenv("TCDICN_DPORT", port))  # 通信端口与监听端口相同
     ttl = int(os.getenv("TCDICN_TTL", 30))  # 生存时间 30s
     tpf = int(os.getenv("TCDICN_TPF", 3))  # 提醒频率

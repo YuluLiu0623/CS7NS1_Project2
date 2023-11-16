@@ -1,75 +1,80 @@
-# actuator.py
+# submersible_pump_controller.py
 import asyncio
 import logging
 import os
 import sys
-
 import tcdicn
+import random
 
 async def main():
+    # Get parameters or defaults
+    file = open("constants.txt", "r")
+    id = file.readline().strip()
+    key = open("key", "rb").read()
+
     name = os.getenv("TCDICN_ID", "submersible_pump_controller")
-    port = int(os.getenv("TCDICN_PORT", 33350))  # 更新端口为 :33350
-    dport = int(os.getenv("TCDICN_DPORT", port))
-    ttl = float(os.getenv("TCDICN_TTL", 30))
-    tpf = int(os.getenv("TCDICN_TPF", 3))
-    ttp = float(os.getenv("TCDICN_TTP", 5))
-    get_ttl = float(os.getenv("TCDICN_GET_TTL", 90))
-    get_tpf = int(os.getenv("TCDICN_GET_TPF", 2))
-    get_ttp = float(os.getenv("TCDICN_GET_TTP", 0.5))
+    port = int(os.environ.get("TCDICN_PORT", random.randint(33334, 65536)))
+    server_host = os.environ.get("TCDICN_SERVER_HOST", "localhost")
+    server_port = int(os.environ.get("TCDICN_SERVER_PORT", 33335))
+    net_ttl = int(os.environ.get("TCDICN_NET_TTL", 180))
+    net_tpf = int(os.environ.get("TCDICN_NET_TPF", 3))
+    net_ttp = float(os.environ.get("TCDICN_NET_TTP", 0))
+    get_ttl = int(os.environ.get("TCDICN_GET_TTL", 180))
+    get_tpf = int(os.environ.get("TCDICN_GET_TPF", 3))
+    get_ttp = float(os.environ.get("TCDICN_GET_TTP", 0))
 
     if name is None:
         sys.exit("Please give your actuator a unique ID by setting TCDICN_ID")
 
+    # Logging verbosity
     verbs = {"dbug": logging.DEBUG, "info": logging.INFO, "warn": logging.WARN}
     logging.basicConfig(
-        format="%(asctime)s.%(msecs)03d [%(levelname)s] %(message)s",
+        format="%(asctime)s.%(msecs)04d [%(levelname)s] %(message)s",
         level=verbs["info"], datefmt="%H:%M:%S")
 
-    # 订阅 Barometer 传感器发布的标签
-    labels = ["pressure", "depth"]
+    # Start the client as a background task
+    logging.info(f"Starting {id}_PUMP client...")
+    client = tcdicn.Client(
+        id + "_PUMP", port, [],
+        server_host, server_port,
+        net_ttl, net_tpf, net_ttp)
 
-    client = {"name": name, "ttp": ttp, "labels": labels}
-    node = tcdicn.Node()
-    node_task = asyncio.create_task(node.start(port, dport, ttl, tpf, client))
-
+    # Define the subscription and actuator logic
     async def run_actuator():
         tasks = set()
 
-        def subscribe(label):
-            logging.info("Subscribing to %s...", label)
-            getter = node.get(label, get_ttl, get_tpf, get_ttp)
-            task = asyncio.create_task(getter, name=label)
+        def subscribe(tag):
+            logging.info(f"Subscribing to {tag}...")
+            getter = client.get(tag, get_ttl, get_tpf, get_ttp)
+            task = asyncio.create_task(getter, name=tag)
             tasks.add(task)
 
-        for label in labels:
-            subscribe(label)
+        subscribe(f"{id}_depth")  # Subscribe to the depth data
 
         while True:
             done, tasks = await asyncio.wait(
                 tasks, return_when=asyncio.FIRST_COMPLETED)
             for task in done:
-                label = task.get_name()
-                value = await task.result()
-                logging.info("Received %s=%s", label, value)
-                adjust_pump_settings(label, value)
-                subscribe(label)
+                tag = task.get_name()
+                value = float(tcdicn.decrypt(task.result(), key))
+                logging.info(f"Received {tag} = {value}")
+                # Logic to adjust pump settings based on depth
+                if tag == f"{id}_depth":
+                    if value > 10:
+                        logging.info("Depth > 10, adjusting pump settings")
+                    else:
+                        logging.info("Depth within normal range")
+                subscribe(tag)
 
-    def adjust_pump_settings(label, value):
-        # 根据接收的数据调整潜水泵设置
-        if label == "depth":
-            # 示例逻辑：根据深度调整潜水泵
-            if value > 10:
-                logging.info("Adjusting pump settings for depth > 10")
-            else:
-                logging.info("Depth is normal, no adjustment needed")
+    # Run the actuator logic as a coroutine
+    actuator_task = run_actuator()
 
-    actuator_task = asyncio.create_task(run_actuator())
-
-    logging.info("Starting submersible pump controller...")
-    tasks = [node_task, actuator_task]
-    await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
-    actuator_task.cancel()
-    logging.info("Submersible pump controller done.")
+    # Wait for the client to shutdown while executing the actuator logic
+    both_tasks = asyncio.gather(client.task, actuator_task)
+    try:
+        await both_tasks
+    except asyncio.exceptions.CancelledError:
+        logging.info("Submersible pump controller client has shutdown.")
 
 if __name__ == "__main__":
     asyncio.run(main())

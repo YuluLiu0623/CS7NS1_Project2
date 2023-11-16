@@ -7,39 +7,51 @@ import sys
 import tcdicn
 
 async def main():
-    name = os.getenv("TCDICN_ID", "emf_sensor")
-    port = int(os.getenv("TCDICN_PORT", 33350))
-    dport = int(os.getenv("TCDICN_DPORT", port))
-    ttl = int(os.getenv("TCDICN_TTL", 30))
-    tpf = int(os.getenv("TCDICN_TPF", 3))
-    ttp = float(os.getenv("TCDICN_TTP", 5))
-    verb = os.getenv("TCDICN_VERBOSITY", "info")
+    # Get parameters or defaults
+    file = open("constants.txt", "r")
+    id = file.readline().strip()
+    key = open("key", "rb").read()
 
-    verbs = {"dbug": logging.DEBUG, "info": logging.INFO, "warn": logging.WARN}
+    port = int(os.environ.get("TCDICN_PORT", random.randint(33334, 65536)))
+    server_host = os.environ.get("TCDICN_SERVER_HOST", "localhost")
+    server_port = int(os.environ.get("TCDICN_SERVER_PORT", 33335))
+    net_ttl = int(os.environ.get("TCDICN_NET_TTL", 180))
+    net_tpf = int(os.environ.get("TCDICN_NET_TPF", 3))
+    net_ttp = float(os.environ.get("TCDICN_NET_TTP", 0))
+
+    # Logging verbosity
     logging.basicConfig(
-        format="%(asctime)s.%(msecs)03d [%(levelname)s] %(message)s",
-        level=verbs[verb], datefmt="%H:%M:%S")
+        format="%(asctime)s.%(msecs)04d [%(levelname)s] %(message)s",
+        level=logging.INFO, datefmt="%H:%M:%S:%m")
 
-    label = "emf_data"  # 电磁场数据的标签
+    # Start the client as a background task
+    logging.info(f"Starting {id}_EMF client...")
+    client = tcdicn.Client(
+        id + "_EMF", port, [id + "_emf_data"],
+        server_host, server_port,
+        net_ttl, net_tpf, net_ttp)
 
-    node = tcdicn.Node()
-    node_task = asyncio.create_task(node.start(port, dport, ttl, tpf, {"name": name, "ttp": ttp, "labels": [label]}))
+    label = id + "_emf_data"  # 电磁场数据的标签
 
     async def run_sensor():
         while True:
             await asyncio.sleep(random.uniform(10, 30))
             emf_reading = random.uniform(0.0, 100.0)  # 模拟电磁场强度
             logging.info(f"Publishing {label} = {emf_reading}...")
+            emfStr = tcdicn.encrypt(str(emf_reading), key)
             try:
-                await node.set(label, str(emf_reading))
+                await client.set(label, emfStr)
             except OSError as exc:
                 logging.error(f"Failed to publish: {exc}")
 
     sensor_task = asyncio.create_task(run_sensor())
 
     logging.info("Starting EMF sensor...")
-    await asyncio.wait([node_task, sensor_task], return_when=asyncio.FIRST_COMPLETED)
-    logging.info("EMF sensor done.")
+    both_tasks = asyncio.gather(client.task, sensor_task)
+    try:
+        await both_tasks
+    except asyncio.exceptions.CancelledError:
+        logging.info("EMF sensor client has shutdown.")
 
 if __name__ == "__main__":
     asyncio.run(main())

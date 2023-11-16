@@ -4,72 +4,79 @@ import logging
 import os
 import sys
 import tcdicn
+import random
 
 async def main():
-    name = os.getenv("TCDICN_ID", "lighting_controller")
-    port = int(os.getenv("TCDICN_PORT", 33350))
-    dport = int(os.getenv("TCDICN_DPORT", port))
-    ttl = float(os.getenv("TCDICN_TTL", 30))
-    tpf = int(os.getenv("TCDICN_TPF", 3))
-    ttp = float(os.getenv("TCDICN_TTP", 5))
-    get_ttl = float(os.getenv("TCDICN_GET_TTL", 90))
-    get_tpf = int(os.getenv("TCDICN_GET_TPF", 2))
-    get_ttp = float(os.getenv("TCDICN_GET_TTP", 0.5))
-    verb = os.getenv("TCDICN_VERBOSITY", "info")
+    # Read ID and key from files
+    file = open("constants.txt", "r")
+    id = file.readline().strip()
+    key = open("key", "rb").read()
 
-    if name is None:
-        sys.exit("Please give your actuator a unique ID by setting TCDICN_ID")
-
-    # Logging verbosity
-    verbs = {"dbug": logging.DEBUG, "info": logging.INFO, "warn": logging.WARN}
+    # Configuration
+    port = int(os.environ.get("TCDICN_PORT", random.randint(33334, 65536)))
+    server_host = os.environ.get("TCDICN_SERVER_HOST", "localhost")
+    server_port = int(os.environ.get("TCDICN_SERVER_PORT", 33335))
+    net_ttl = int(os.environ.get("TCDICN_NET_TTL", 180))
+    net_tpf = int(os.environ.get("TCDICN_NET_TPF", 3))
+    net_ttp = float(os.environ.get("TCDICN_NET_TTP", 0))
+    get_ttl = int(os.environ.get("TCDICN_GET_TTL", 180))
+    get_tpf = int(os.environ.get("TCDICN_GET_TPF", 3))
+    get_ttp = float(os.environ.get("TCDICN_GET_TTP", 0))
+    if id is None:
+        sys.exit("Please give your client a unique ID by setting TCDICN_ID")
+    # Logging configuration
     logging.basicConfig(
-        format="%(asctime)s.%(msecs)03d [%(levelname)s] %(message)s",
-        level=verbs[verb], datefmt="%H:%M:%S")
+        format="%(asctime)s.%(msecs)04d [%(levelname)s] %(message)s",
+        level=logging.INFO, datefmt="%H:%M:%S:%m")
 
-    # 初始化 ICN 节点客户端，不发布任何标签
-    client = {"name": name, "ttp": ttp, "labels": []}
-    node = tcdicn.Node()
-    node_task = asyncio.create_task(node.start(port, dport, ttl, tpf, client))
+    # Start the client
+    logging.info(f"Starting {id}_LIGHT client...")
+    client = tcdicn.Client(
+        id + "_LIGHT", port, [],
+        server_host, server_port,
+        net_ttl, net_tpf, net_ttp)
 
-    # 假设初始亮度为 50%
+    # Current brightness initialization
     current_brightness = 50
 
-    async def run_actuator():
-        nonlocal current_brightness
-        label = ["water_temperature"]
-        tasks = set()
-
-        def subscribe(label):
-            logging.info(f"Subscribing to {label}...")
-            getter = node.get(label, get_ttl, get_tpf, get_ttp)
-            task = asyncio.create_task(getter, name=label)
-            tasks.add(task)
-
-
-        while True:
-            done, tasks = await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
-            for task in done:
-                label = task.get_name()
-                temperature = await task.result()
-                logging.info(f"Received {label} = {temperature}")
-                current_brightness = adjust_lighting(float(temperature), current_brightness)
-                # 发布当前亮度数据
-                await node.set("lighting_brightness", str(current_brightness))
-                subscribe(label)
-
+    # Define a function to adjust lighting
     def adjust_lighting(temperature, brightness):
         if temperature < 10:
-            logging.info("Low temperature detected, increasing lighting brightness.")
-            return min(brightness + 10, 100)  # 增加亮度，但不超过 100%
+            return min(brightness + 10, 100)
         else:
-            logging.info("Normal temperature, maintaining current lighting.")
-            return max(brightness - 5, 0)  # 降低亮度，但不低于 0%
+            return max(brightness - 5, 0)
 
-    actuator_task = asyncio.create_task(run_actuator())
+    # Subscribe and process temperature data
+    async def run_actuator():
+        def subscribe(tag):
+            getter = client.get(tag, get_ttl, get_tpf, get_ttp)
+            task = asyncio.create_task(getter, name=tag)
+            tasks.add(task)
 
-    logging.info("Starting lighting controller...")
-    await asyncio.wait([node_task, actuator_task], return_when=asyncio.FIRST_COMPLETED)
-    logging.info("Lighting controller done.")
+        logging.info(f"Subscribing to {id}_water_temperature...")
+        subscribe(id + "_water_temperature")
+
+        while True:
+            done, tasks = await asyncio.wait(
+                tasks, return_when=asyncio.FIRST_COMPLETED)
+            for task in done:
+                tag = task.get_name()
+                temperature = float(tcdicn.decrypt(task.result(), key))
+                logging.info(f"Received {tag} = {temperature}")
+                current_brightness = adjust_lighting(temperature, current_brightness)
+                encrypted_brightness = tcdicn.encrypt(str(current_brightness), key)
+                await client.set(f"{id}_lighting_brightness", encrypted_brightness)
+                subscribe(tag)
+
+    # Run the actuator logic as a coroutine
+    actuator_task = run_actuator()
+
+    # Execute both tasks
+    both_tasks = asyncio.gather(client.task, actuator_task)
+    try:
+        await both_tasks
+    except asyncio.exceptions.CancelledError:
+        logging.info("Lighting controller client has shutdown.")
 
 if __name__ == "__main__":
     asyncio.run(main())

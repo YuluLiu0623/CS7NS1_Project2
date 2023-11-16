@@ -3,55 +3,78 @@ import asyncio
 import logging
 import os
 import sys
+from asyncio import tasks
+
 import tcdicn
 import random
 
 async def main():
-    name = os.getenv("TCDICN_ID", "communication_modulator")
-    port = int(os.getenv("TCDICN_PORT", 33350))
-    dport = int(os.getenv("TCDICN_DPORT", port))
-    ttl = float(os.getenv("TCDICN_TTL", 30))
-    tpf = int(os.getenv("TCDICN_TPF", 3))
-    ttp = float(os.getenv("TCDICN_TTP", 5))
-    verb = os.getenv("TCDICN_VERBOSITY", "info")
+    file = open("constants.txt", "r")
+    id = file.readline().strip()
+    key = open("key", "rb").read()
 
-    verbs = {"dbug": logging.DEBUG, "info": logging.INFO, "warn": logging.WARN}
+    port = int(os.environ.get("TCDICN_PORT", random.randint(33334, 65536)))
+    server_host = os.environ.get("TCDICN_SERVER_HOST", "localhost")
+    server_port = int(os.environ.get("TCDICN_SERVER_PORT", 33335))
+    net_ttl = int(os.environ.get("TCDICN_NET_TTL", 180))
+    net_tpf = int(os.environ.get("TCDICN_NET_TPF", 3))
+    net_ttp = float(os.environ.get("TCDICN_NET_TTP", 0))
+    get_ttl = int(os.environ.get("TCDICN_GET_TTL", 180))
+    get_tpf = int(os.environ.get("TCDICN_GET_TPF", 3))
+    get_ttp = float(os.environ.get("TCDICN_GET_TTP", 0))
+
+    if id is None:
+        sys.exit("Please give your client a unique ID by setting TCDICN_ID")
+
     logging.basicConfig(
-        format="%(asctime)s.%(msecs)03d [%(levelname)s] %(message)s",
-        level=verbs[verb], datefmt="%H:%M:%S")
+        format="%(asctime)s.%(msecs)04d [%(levelname)s] %(message)s",
+        level=logging.INFO, datefmt="%H:%M:%S:%m")
 
-    label = "communication_status"  # 通信状态的标签
+    logging.info("Starting client...")
+    client = tcdicn.Client(
+        id + "_MOD", port, [],
+        server_host, server_port,
+        net_ttl, net_tpf, net_ttp)
 
-    node = tcdicn.Node()
-    node_task = asyncio.create_task(node.start(port, dport, ttl, tpf, {"name": name, "ttp": ttp, "labels": [label]}))
-
-    # 处理电磁场数据并调整通信模式
     async def adjust_communication_mode(emf_value):
         if emf_value > 50.0:
-            # 调整到高干扰模式
             logging.info("High EMF detected, switching to high interference mode.")
             mode = "High Interference Mode"
         else:
-            # 维持正常通信模式
             logging.info("Normal EMF levels, maintaining standard mode.")
             mode = "Standard Mode"
-
-        # 发布通信模式状态
+        encrypted_mode = tcdicn.encrypt(mode, key)
         try:
-            await node.set(label, mode)
+            await client.set("communication_status", encrypted_mode)
         except OSError as exc:
             logging.error(f"Failed to publish communication mode: {exc}")
 
-    # 订阅电磁场数据
-    async def subscribe_to_emf_data():
-        while True:
-            emf_reading = await node.get("emf_data", ttl, tpf, ttp)
-            await adjust_communication_mode(float(emf_reading))
+    def subscribe(tag):
+        getter = client.get(tag, get_ttl, get_tpf, get_ttp)
+        task = asyncio.create_task(getter, name=tag)
+        tasks.add(task)
 
-    subscription_task = asyncio.create_task(subscribe_to_emf_data())
+    logging.info("Subscribing to emf_data...")
+    subscribe(id + "_emf_data")
+
+    async def run_actuator():
+        tasks = set()
+        while True:
+            done, _ = await asyncio.wait(
+                tasks, return_when=asyncio.FIRST_COMPLETED)
+            for task in done:
+                tag = task.get_name()
+                value = float(tcdicn.decrypt(task.result(), key))
+                logging.info(f"Received {tag} = {value}")
+                if tag == "emf_data":
+                    await adjust_communication_mode(value)
+                logging.info(f"Resubscribing to {tag}...")
+                subscribe(tag)
+
+    actuator_task = asyncio.create_task(run_actuator())
 
     logging.info("Starting communication modulator...")
-    await asyncio.wait([node_task, subscription_task], return_when=asyncio.FIRST_COMPLETED)
+    await asyncio.wait([client.task, actuator_task], return_when=asyncio.FIRST_COMPLETED)
     logging.info("Communication modulator done.")
 
 if __name__ == "__main__":

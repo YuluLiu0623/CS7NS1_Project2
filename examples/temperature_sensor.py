@@ -7,40 +7,51 @@ import sys
 import tcdicn
 
 async def main():
-    name = os.getenv("TCDICN_ID", "temperature_sensor")
-    port = int(os.getenv("TCDICN_PORT", 33350))  # 设置为不同于默认的端口
-    dport = int(os.getenv("TCDICN_DPORT", port))  # 使用与监听端口相同的端口
-    ttl = float(os.getenv("TCDICN_TTL", 30))  # 生存时间 30s
-    tpf = int(os.getenv("TCDICN_TPF", 3))  # 提醒频率
-    ttp = float(os.getenv("TCDICN_TTP", 5))  # 重复广告的时间阈值
+    # Get parameters or defaults
+    file = open("constants.txt", "r")
+    id = file.readline().strip()
+    key = open("key", "rb").read()
 
-    if name is None:
-        sys.exit("Please give your sensor a unique ID by setting TCDICN_ID")
+    port = int(os.environ.get("TCDICN_PORT", random.randint(33334, 65536)))
+    server_host = os.environ.get("TCDICN_SERVER_HOST", "localhost")
+    server_port = int(os.environ.get("TCDICN_SERVER_PORT", 33335))
+    net_ttl = int(os.environ.get("TCDICN_NET_TTL", 180))
+    net_tpf = int(os.environ.get("TCDICN_NET_TPF", 3))
+    net_ttp = float(os.environ.get("TCDICN_NET_TTP", 0))
 
-    verbs = {"dbug": logging.DEBUG, "info": logging.INFO, "warn": logging.WARN}
+    # Logging verbosity
     logging.basicConfig(
-        format="%(asctime)s.%(msecs)03d [%(levelname)s] %(message)s",
-        level=verbs["info"], datefmt="%H:%M:%S")
+        format="%(asctime)s.%(msecs)04d [%(levelname)s] %(message)s",
+        level=logging.INFO, datefmt="%H:%M:%S:%m")
 
-    label = "water_temperature"  # 用于发布温度数据的标签
-    node = tcdicn.Node()
-    node_task = asyncio.create_task(node.start(port, dport, ttl, tpf, {"name": name, "ttp": ttp, "labels": [label]}))
+    # Start the client as a background task
+    logging.info(f"Starting {id}_TEMP client...")
+    client = tcdicn.Client(
+        id + "_TEMP", port, [id + "_water_temperature"],
+        server_host, server_port,
+        net_ttl, net_tpf, net_ttp)
+
+    label = id + "_water_temperature"  # 水温数据的标签
 
     async def run_sensor():
         while True:
             await asyncio.sleep(random.uniform(10, 30))
             temperature = random.uniform(0, 25)  # 模拟水温数据
             logging.info(f"Publishing {label} = {temperature}...")
+            tempStr = tcdicn.encrypt(str(temperature), key)
             try:
-                await node.set(label, str(temperature))
+                await client.set(label, tempStr)
             except OSError as exc:
                 logging.error(f"Failed to publish: {exc}")
 
     sensor_task = asyncio.create_task(run_sensor())
 
     logging.info("Starting temperature sensor...")
-    await asyncio.wait([node_task, sensor_task], return_when=asyncio.FIRST_COMPLETED)
-    logging.info("Temperature sensor done.")
+    both_tasks = asyncio.gather(client.task, sensor_task)
+    try:
+        await both_tasks
+    except asyncio.exceptions.CancelledError:
+        logging.info("Temperature sensor client has shutdown.")
 
 if __name__ == "__main__":
     asyncio.run(main())
