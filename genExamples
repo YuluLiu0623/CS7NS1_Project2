@@ -1,4 +1,4 @@
-tmux new-session -d -s EXAMPLES
+tmux new-session -d -s Examples
 tmux new-window -d -n node
 tmux new-window -d -n water_quality_sensor
 tmux new-window -d -n water_flow_sensor
