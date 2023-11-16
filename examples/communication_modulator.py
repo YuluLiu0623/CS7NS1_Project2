@@ -3,8 +3,6 @@ import asyncio
 import logging
 import os
 import sys
-from asyncio import tasks
-
 import tcdicn
 import random
 
@@ -49,16 +47,19 @@ async def main():
         except OSError as exc:
             logging.error(f"Failed to publish communication mode: {exc}")
 
-    def subscribe(tag):
-        getter = client.get(tag, get_ttl, get_tpf, get_ttp)
-        task = asyncio.create_task(getter, name=tag)
-        tasks.add(task)
 
-    logging.info("Subscribing to emf_data...")
-    subscribe(id + "_emf_data")
 
     async def run_actuator():
         tasks = set()
+
+        def subscribe(tag):
+            getter = client.get(tag, get_ttl, get_tpf, get_ttp)
+            task = asyncio.create_task(getter, name=tag)
+            tasks.add(task)
+
+        logging.info("Subscribing to emf_data...")
+        subscribe(id + "_emf_data")
+
         while True:
             done, _ = await asyncio.wait(
                 tasks, return_when=asyncio.FIRST_COMPLETED)
