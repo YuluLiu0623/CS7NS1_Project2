@@ -40,15 +40,18 @@ async def main():
 
     # 根据电磁场值调整通信模式
     async def adjust_communication_mode(emf_value):
+        logging.info(f"Adjusting communication mode for EMF value: {emf_value}")  # 新增日志
         if emf_value > 50.0:
             logging.info("High EMF detected, switching to high interference mode.")
             mode = "High Interference Mode"
         else:
             logging.info("Normal EMF levels, maintaining standard mode.")
             mode = "Standard Mode"
+
         encrypted_mode = tcdicn.encrypt(mode, key)
         try:
-            await client.set("communication_status", encrypted_mode)
+            client.set("communication_status", encrypted_mode)  # 移除 await
+            logging.info(f"Published communication mode: {mode}")  # 新增日志
         except OSError as exc:
             logging.error(f"Failed to publish communication mode: {exc}")
 
