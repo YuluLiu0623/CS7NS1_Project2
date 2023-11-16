@@ -4,10 +4,10 @@ import logging
 import signal
 import socket
 import time
-from cryptography.fernet import Fernet
 from asyncio import DatagramTransport, StreamWriter, StreamReader
 from typing import List, Tuple, Dict
 
+from cryptography.fernet import Fernet
 
 VERSION = "0.2-dev_group26"
 
