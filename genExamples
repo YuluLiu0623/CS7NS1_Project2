@@ -1,5 +1,5 @@
 tmux new-session -d -s Examples
-tmux new-window -d -n node
+tmux new-window -d -n server
 tmux new-window -d -n water_quality_sensor
 tmux new-window -d -n water_flow_sensor
 tmux new-window -d -n temperature_sensor
@@ -8,7 +8,7 @@ tmux new-window -d -n emf_sensor
 tmux new-window -d -n communication_modulator
 tmux new-window -d -n lighting_controller
 tmux new-window -d -n submersible_pump_controller
-tmux send-keys -t Examples:node "PYTHONPATH=. python3 ./examples/node.py" Enter
+tmux send-keys -t Examples:server "PYTHONPATH=. python3 ./examples/server.py" Enter
 tmux send-keys -t Examples:water_quality_sensor "PYTHONPATH=. python3 ./examples/water_quality_sensor.py" Enter
 tmux send-keys -t Examples:water_flow_sensor "PYTHONPATH=. python3 ./examples/water_flow_sensor.py" Enter
 tmux send-keys -t Examples:temperature_sensor "PYTHONPATH=. python3 ./examples/temperature_sensor.py" Enter
