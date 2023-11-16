@@ -8,7 +8,7 @@ tmux new-window -d -n emf_sensor
 tmux new-window -d -n communication_modulator
 tmux new-window -d -n lighting_controller
 tmux new-window -d -n submersible_pump_controller
-tmux send-keys -t Examples:node "PYTHONPATH=. python3 ./examples/noed.py" Enter
+tmux send-keys -t Examples:node "PYTHONPATH=. python3 ./examples/node.py" Enter
 tmux send-keys -t Examples:water_quality_sensor "PYTHONPATH=. python3 ./examples/water_quality_sensor.py" Enter
 tmux send-keys -t Examples:water_flow_sensor "PYTHONPATH=. python3 ./examples/water_flow_sensor.py" Enter
 tmux send-keys -t Examples:temperature_sensor "PYTHONPATH=. python3 ./examples/temperature_sensor.py" Enter
