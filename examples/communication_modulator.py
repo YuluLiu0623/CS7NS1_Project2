@@ -7,12 +7,10 @@ import tcdicn
 import random
 
 async def main():
-    # 读取配置和密钥
     file = open("constants.txt", "r")
     id = file.readline().strip()
     key = open("key", "rb").read()
 
-    # 设置连接参数
     port = int(os.environ.get("TCDICN_PORT", random.randint(33334, 65536)))
     server_host = os.environ.get("TCDICN_SERVER_HOST", "localhost")
     server_port = int(os.environ.get("TCDICN_SERVER_PORT", 33335))
@@ -26,12 +24,10 @@ async def main():
     if id is None:
         sys.exit("Please give your client a unique ID by setting TCDICN_ID")
 
-    # 配置日志
     logging.basicConfig(
         format="%(asctime)s.%(msecs)04d [%(levelname)s] %(message)s",
         level=logging.INFO, datefmt="%H:%M:%S:%m")
 
-    # 启动客户端
     logging.info("Starting client...")
     client = tcdicn.Client(
         id + "_MOD", port, [],
@@ -40,7 +36,7 @@ async def main():
 
     # 根据电磁场值调整通信模式
     async def adjust_communication_mode(emf_value):
-        logging.info(f"Adjusting communication mode for EMF value: {emf_value}")  # 新增日志
+        logging.info(f"Adjusting communication mode for EMF value: {emf_value}")  # 调试信息
         if emf_value > 50.0:
             logging.info("High EMF detected, switching to high interference mode.")
             mode = "High Interference Mode"
@@ -50,10 +46,10 @@ async def main():
 
         encrypted_mode = tcdicn.encrypt(mode, key)
         try:
-            client.set("communication_status", encrypted_mode)  # 移除 await
+            await client.set("communication_status", encrypted_mode)
             logging.info(f"Published communication mode: {mode}")  # 新增日志
-        except OSError as exc:
-            logging.error(f"Failed to publish communication mode: {exc}")
+        except Exception as e:
+            logging.error(f"Error in adjust_communication_mode: {e}")
 
     # 订阅电磁场数据
     async def run_actuator():
@@ -75,12 +71,10 @@ async def main():
                 tag = task.get_name()
                 value = float(tcdicn.decrypt(task.result(), key))
                 logging.info(f"Received {tag} = {value}")
-                if tag == "emf_data":
+                if tag == id + "_emf_data":
                     await adjust_communication_mode(value)
-                await asyncio.sleep(3)
                 subscribe(tag)  # 重新订阅标签（如果任务完成）
 
-    # 运行执行器任务
     actuator_task = asyncio.create_task(run_actuator())
 
     logging.info("Starting communication modulator...")
