@@ -36,7 +36,7 @@ async def main():
 
     async def run_actuator():
         nonlocal current_brightness
-        labels = ["water_temperature"]
+        label = ["water_temperature"]
         tasks = set()
 
         def subscribe(label):
@@ -45,8 +45,6 @@ async def main():
             task = asyncio.create_task(getter, name=label)
             tasks.add(task)
 
-        for label in labels:
-            subscribe(label)
 
         while True:
             done, tasks = await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
