@@ -1,0 +1,36 @@
+version: "3"
+name: "tcdicn-ring"
+
+services:
+
+  a:
+    extends:
+      file: basic.yml
+      service: sensor
+    networks: [ da, ab ]
+    environment: [ TCDICN_ID=my_cool_sensor ]
+
+  b:
+    extends:
+      file: basic.yml
+      service: node
+    networks: [ ab, bc ]
+
+  c:
+    extends:
+      file: basic.yml
+      service: actuator
+    networks: [ bc, cd ]
+    environment: [ TCDICN_ID=my_cool_actuator ]
+
+  d:
+    extends:
+      file: basic.yml
+      service: node
+    networks: [ cd, da ]
+
+networks:
+  ab:
+  bc:
+  cd:
+  da:
