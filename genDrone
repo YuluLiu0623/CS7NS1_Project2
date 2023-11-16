@@ -1,13 +1,13 @@
 tmux new-session -d -s EXAMPLE
-tmux new-window -d -n server
-tmux new-window -d -n ballast
-tmux new-window -d -n barometer
-tmux new-window -d -n camera
-tmux new-window -d -n compass
-tmux new-window -d -n motor
-tmux new-window -d -n positioning
-tmux new-window -d -n power
-tmux new-window -d -n sampler
+tmux new-window -d -n node
+tmux new-window -d -n water_quality_sensor
+tmux new-window -d -n water_flow_sensor
+tmux new-window -d -n temperature_sensor
+tmux new-window -d -n sonar_sensor
+tmux new-window -d -n emf_sensor
+tmux new-window -d -n communication_modulator
+tmux new-window -d -n lighting_controller
+tmux new-window -d -n submersible_pump_controller
 tmux send-keys -t Drone:server "PYTHONPATH=. python3 ./examples/noed.py" Enter
 tmux send-keys -t Drone:ballast "PYTHONPATH=. python3 ./examples/water_quality_sensor.py" Enter
 tmux send-keys -t Drone:barometer "PYTHONPATH=. python3 ./examples/water_flow_sensor.py" Enter
