@@ -11,6 +11,7 @@ from logging import Logger, LoggerAdapter
 from json import JSONDecodeError
 from typing import Dict, Tuple, List
 
+
 # The version of this protocol implementation is included in all communications
 # This allows peers which implement one or more versions to react appropriately
 VERSION: str = "0.2"
@@ -794,3 +795,4 @@ class Node:
                 self.send_queue.put_nowait(
                     (deadline, client, routes, new_set_item))
                 self.is_send_queue_changed = True
+
