@@ -49,7 +49,7 @@ async def main():
     # Subscribe and process temperature data
     async def run_actuator():
 
-        global current_brightness
+        nonlocal current_brightness
         tasks = set()
         def subscribe(tag):
             getter = client.get(tag, get_ttl, get_tpf, get_ttp)

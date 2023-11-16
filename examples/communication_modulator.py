@@ -71,6 +71,7 @@ async def main():
                     await adjust_communication_mode(value)
                 logging.info(f"Resubscribing to {tag}...")
                 subscribe(tag)
+            await asyncio.sleep(5)
 
     actuator_task = asyncio.create_task(run_actuator())
 
