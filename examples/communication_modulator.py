@@ -7,10 +7,12 @@ import tcdicn
 import random
 
 async def main():
+    # 读取配置和密钥
     file = open("constants.txt", "r")
     id = file.readline().strip()
     key = open("key", "rb").read()
 
+    # 设置连接参数
     port = int(os.environ.get("TCDICN_PORT", random.randint(33334, 65536)))
     server_host = os.environ.get("TCDICN_SERVER_HOST", "localhost")
     server_port = int(os.environ.get("TCDICN_SERVER_PORT", 33335))
@@ -24,16 +26,19 @@ async def main():
     if id is None:
         sys.exit("Please give your client a unique ID by setting TCDICN_ID")
 
+    # 配置日志
     logging.basicConfig(
         format="%(asctime)s.%(msecs)04d [%(levelname)s] %(message)s",
         level=logging.INFO, datefmt="%H:%M:%S:%m")
 
+    # 启动客户端
     logging.info("Starting client...")
     client = tcdicn.Client(
         id + "_MOD", port, [],
         server_host, server_port,
         net_ttl, net_tpf, net_ttp)
 
+    # 根据电磁场值调整通信模式
     async def adjust_communication_mode(emf_value):
         if emf_value > 50.0:
             logging.info("High EMF detected, switching to high interference mode.")
@@ -47,32 +52,32 @@ async def main():
         except OSError as exc:
             logging.error(f"Failed to publish communication mode: {exc}")
 
-
-
+    # 订阅电磁场数据
     async def run_actuator():
-        tasks = set()
+        tasks = {}
 
         def subscribe(tag):
-            getter = client.get(tag, get_ttl, get_tpf, get_ttp)
-            task = asyncio.create_task(getter, name=tag)
-            tasks.add(task)
+            if tag not in tasks or tasks[tag].done():
+                logging.info(f"Subscribing to {tag}...")
+                getter = client.get(tag, get_ttl, get_tpf, get_ttp)
+                task = asyncio.create_task(getter, name=tag)
+                tasks[tag] = task
 
-        logging.info("Subscribing to emf_data...")
         subscribe(id + "_emf_data")
 
         while True:
             done, _ = await asyncio.wait(
-                tasks, return_when=asyncio.FIRST_COMPLETED)
+                tasks.values(), return_when=asyncio.FIRST_COMPLETED)
             for task in done:
                 tag = task.get_name()
                 value = float(tcdicn.decrypt(task.result(), key))
                 logging.info(f"Received {tag} = {value}")
                 if tag == "emf_data":
                     await adjust_communication_mode(value)
-                logging.info(f"Resubscribing to {tag}...")
-                subscribe(tag)
-            await asyncio.sleep(5)
+                await asyncio.sleep(3)
+                subscribe(tag)  # 重新订阅标签（如果任务完成）
 
+    # 运行执行器任务
     actuator_task = asyncio.create_task(run_actuator())
 
     logging.info("Starting communication modulator...")
